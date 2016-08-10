@@ -1,0 +1,127 @@
+from glob import glob
+from subprocess import call
+import os
+import fnmatch
+
+mmcu = 'atmega328p'
+mcu = 'atmega328p'
+project_name = 'main'
+programmer = 'arduino'
+serial_port = 'USB0'
+serial_baud = '57600' 
+
+cc = 'avr-gcc'
+cxx = 'avr-g++'
+
+mmcu_flag = '-mmcu=' + mmcu
+
+build_dir = 'build/'
+src_dir = 'src/'
+src_ext = '.c'
+include_dir = 'include/'
+lib_dir = 'libraries/'
+build_target = build_dir + project_name
+
+avr_objcopy = 'avr-objcopy -j .text -j .data -O ihex $SOURCE $TARGET'
+avr_size = 'avr-size $SOURCE -C -d --mcu=%s' % (mmcu)
+
+# AddOption for uploading.
+# AddOption('--upload',
+#           type='int',
+#           nargs=0,
+#           action='store',
+#           metavar='hello',
+#           help='starts uploading after compiling')
+
+prog_command = ''
+if programmer == 'usbtiny':
+    pass
+elif programmer == 'usbasp':
+    pass
+elif programmer == 'wiring':
+    pass
+elif programmer == 'arduino':
+    prog_command = ('/usr/bin/avrdude -c arduino -P /dev/tty%s -p %s -b%s -D -U flash:w:%s:i' %
+                    (serial_port, mcu, serial_baud, build_target + '.hex'))
+elif programmer == 'avrisp':
+    pass
+
+# system installed libs that are needed.
+system_libs = []
+
+# local libs are libraries inside of the project libraries folder.
+# asuming the library folder has the same name as the library folderl (lib+foldername).
+local_libs = []
+
+ccflags = ['-Werror']
+# for debugging symbols.
+ccflags.append(mmcu_flag)
+ccflags.append('-Os')
+ccflags.append('-ansi')
+ccflags.append('-pedantic-errors')
+ccflags.append('-Wextra')
+ccflags.append('-Wall')
+ccflags.append('-std=c99')
+
+env = Environment(CC=cc, CXX=cxx)
+env.Append(CCFLAGS=ccflags)
+env.Append(CPPPATH=[include_dir])
+env.Append(LINKFLAGS=[mmcu_flag])
+
+# add all the directories in include
+for root, dirnames, filenames in os.walk(include_dir):
+    for dirname in dirnames:
+        path = os.path.join(root, dirname)
+        env.Append(CPPPATH=[path])
+
+# run for local libs
+if len(local_libs):
+    for lib in local_libs:
+        env.Append(CPPPATH=[lib_dir + lib + '/' + 'include/'])
+        env.Append(LIBPATH=[lib_dir + lib + '/' + 'lib/'])
+        env.Append(LIBS=[lib])
+
+# run for system libs
+if len(system_libs):
+    # run for system installed libs
+    for lib in system_libs:
+        env.Append(LIBS=[lib]);
+    print("libs: %s" % env['LIBS'])
+
+# collect source and make object names for them.
+obj_targets = []
+src_files = []
+for root, dirnames, filenames in os.walk(src_dir):
+    for filename in fnmatch.filter(filenames, '*' + src_ext):
+        src_files.append(os.path.join(root, filename))
+
+for src in src_files:
+    target = src.replace(src_ext, '.o')
+    obj_targets.append(build_dir + target)
+
+objects = []
+for (obj_target, src_file) in zip(obj_targets, src_files):
+    objects.append(env.Object(target=obj_target, source=src_file))
+
+# build .elf
+env.Program(target=build_target + '.elf', source=objects)
+
+# build .hex
+env.Command(build_target + '.hex', build_target + '.elf', avr_objcopy)
+
+# show memory usage
+env.Command(None, build_target + '.elf', avr_size)
+
+# uploading
+upload = ARGUMENTS.get('upload', 0)
+if int(upload):
+    print(prog_command)
+    call(prog_command, shell=True)
+
+Clean('.', build_dir)
+
+if 'CPPPATH' in env:
+    print("cpppath: %s" % env['CPPPATH'])
+if 'LIBPATH' in env:
+    print("libpath: %s" % env['LIBPATH'])
+# print("obj_target: %s, src_files: %s \n" % (str(obj_targets), str(src_files)))
