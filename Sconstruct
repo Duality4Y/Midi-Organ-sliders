@@ -113,10 +113,11 @@ env.Command(build_target + '.hex', build_target + '.elf', avr_objcopy)
 env.Command(None, build_target + '.elf', avr_size)
 
 # uploading
-upload = ARGUMENTS.get('upload', 0)
-if int(upload):
+upload = ARGUMENTS.get('upload', 1)
+if 'upload' in COMMAND_LINE_TARGETS:
     print(prog_command)
     call(prog_command, shell=True)
+    env.Exit()
 
 Clean('.', build_dir)
 
